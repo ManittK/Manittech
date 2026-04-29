@@ -1,0 +1,154 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && 
+             request.auth.token.email.lower() == 'manitt.kedia@gmail.com' && 
+             request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Users ---
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isSignedIn() && isOwner(userId) && isValidUser(incoming());
+      allow update: if isSignedIn() && (isOwner(userId) || isAdmin()) && (
+        // Allow owner to update name and switch roles or update referral info
+        (isOwner(userId) && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'role', 'referralCode', 'referredBy', 'updatedAt', 'isWorkerActive'])) ||
+        // Only admin can unlock commission or award credits
+        (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['commissionLock', 'credits', 'role', 'isWorkerActive']))
+      );
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'name', 'email', 'role', 'createdAt']) &&
+             data.uid == request.auth.uid &&
+             data.name is string && data.name.size() <= 100 &&
+             data.email is string && data.email.size() <= 150 &&
+             data.role in ['customer', 'worker', 'admin'] &&
+             (data.createdAt is timestamp || data.createdAt == request.time);
+    }
+
+    // --- Workers ---
+    match /workers/{workerId} {
+      allow read: if true; // Marketplace is public
+      allow create: if isSignedIn() && isOwner(workerId) && isValidWorker(incoming());
+      allow update: if (isSignedIn() && isOwner(workerId) && isValidWorker(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['skill', 'description', 'rate', 'experience', 'location', 'availability', 'status', 'upiId', 'phone', 'address', 'qrCodeUrl', 'updatedAt'])
+      )) || isAdmin();
+      
+      // Protect PII fields from public read
+      allow get: if isSignedIn() && (isOwner(workerId) || isAdmin());
+    }
+
+    function isValidWorker(data) {
+      return data.keys().hasAll(['uid', 'skill', 'rate', 'location']) &&
+             data.uid == request.auth.uid &&
+             data.skill is string && data.skill.size() <= 100 &&
+             data.rate is number && data.rate >= 0 &&
+             data.location is string && data.location.size() <= 100 &&
+             (!data.keys().contains('upiId') || (data.upiId is string && data.upiId.size() <= 100)) &&
+             (!data.keys().contains('phone') || (data.phone is string && data.phone.size() <= 20)) &&
+             (!data.keys().contains('qrCodeUrl') || (data.qrCodeUrl is string && data.qrCodeUrl.size() <= 500000)) &&
+             (!data.keys().contains('address') || (data.address is string && data.address.size() <= 300));
+    }
+
+    // --- Platform Settings ---
+    match /settings/platform {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // --- Bookings ---
+    match /bookings/{bookingId} {
+      allow get: if isSignedIn() && (isOwner(existing().customerId) || isOwner(existing().workerId) || isAdmin());
+      allow list: if isSignedIn() && (resource.data.customerId == request.auth.uid || resource.data.workerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isOwner(incoming().customerId) && isValidBooking(incoming());
+      allow update: if isSignedIn() && (
+        (isOwner(existing().customerId) && incoming().diff(existing()).affectedKeys().hasOnly(['status']) && incoming().status == 'cancelled') ||
+        (isOwner(existing().workerId) && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'amount', 'bookingTime']) && incoming().status in ['confirmed', 'completed', 'cancelled']) ||
+        isAdmin()
+      );
+    }
+
+    function isValidBooking(data) {
+      return data.keys().hasAll(['customerId', 'workerId', 'serviceType', 'status', 'amount', 'bookingTime', 'createdAt']) &&
+             data.customerId == request.auth.uid &&
+             data.workerId is string &&
+             data.serviceType is string &&
+             data.status == 'pending' &&
+             data.amount is number &&
+             data.bookingTime is timestamp &&
+             data.createdAt == request.time;
+    }
+
+    // --- Transactions ---
+    match /transactions/{transactionId} {
+      allow read: if isSignedIn() && (isOwner(resource.data.customerId) || isOwner(resource.data.workerId) || isAdmin());
+      allow create: if isSignedIn() && (isOwner(incoming().workerId) || isOwner(incoming().customerId)) && isValidTransaction(incoming());
+    }
+
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['bookingId', 'amount', 'workerId', 'customerId', 'status', 'createdAt']) &&
+             data.amount >= 0 &&
+             data.createdAt == request.time;
+    }
+
+    // --- Commission Bills ---
+    match /commissionBills/{billId} {
+      allow read: if isSignedIn() && (isOwner(resource.data.workerId) || isAdmin());
+      allow update: if isAdmin() || (
+        isOwner(existing().workerId) && 
+        incoming().status == 'pending_verification' && 
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'transactionId']) &&
+        incoming().transactionId is string && incoming().transactionId.size() <= 200
+      );
+      allow create: if isAdmin();
+    }
+
+    // --- Referrals ---
+    match /referrals/{referralId} {
+      allow read: if isSignedIn() && (isOwner(resource.data.referrerId) || isAdmin());
+      allow create: if isSignedIn() && isOwner(incoming().referrerId);
+    }
+
+    // --- Tool Usage ---
+    match /toolUsage/{usageId} {
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid && isValidToolUsage(incoming());
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    function isValidToolUsage(data) {
+      return data.keys().hasAll(['userId', 'toolName', 'createdAt']) &&
+             data.userId == request.auth.uid &&
+             data.toolName is string &&
+             data.createdAt == request.time;
+    }
+  }
+}

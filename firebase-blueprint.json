@@ -1,0 +1,148 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["customer", "worker", "admin"] },
+        "referralCode": { "type": "string" },
+        "referredBy": { "type": "string" },
+        "credits": { "type": "number" },
+        "isWorkerActive": { "type": "boolean" },
+        "commissionLock": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "name", "email", "role", "createdAt"]
+    },
+    "Worker": {
+      "title": "Worker",
+      "description": "Worker profile and availability",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "skill": { "type": "string" },
+        "description": { "type": "string" },
+        "rate": { "type": "number" },
+        "experience": { "type": "number" },
+        "location": { "type": "string" },
+        "rating": { "type": "number" },
+        "reviewCount": { "type": "number" },
+        "availability": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "inactive"] },
+        "upiId": { "type": "string" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "qrCodeUrl": { "type": "string" }
+      },
+      "required": ["uid", "skill", "rate", "location"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "UPI Payment ledger record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "bookingId": { "type": "string" },
+        "amount": { "type": "number" },
+        "workerId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "paymentMethod": { "type": "string" },
+        "status": { "type": "string", "enum": ["success", "pending", "failed"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["bookingId", "amount", "workerId", "customerId", "status", "createdAt"]
+    },
+    "CommissionBill": {
+      "title": "CommissionBill",
+      "description": "Monthly 5% platform commission bill",
+      "type": "object",
+      "properties": {
+        "workerId": { "type": "string" },
+        "month": { "type": "string" },
+        "totalRevenue": { "type": "number" },
+        "commissionAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["unpaid", "pending_verification", "paid"] },
+        "transactionId": { "type": "string" },
+        "dueDate": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workerId", "month", "totalRevenue", "commissionAmount", "status", "createdAt"]
+    },
+    "Referral": {
+      "title": "Referral",
+      "description": "Tracks user invitations",
+      "type": "object",
+      "properties": {
+        "referrerId": { "type": "string" },
+        "referredId": { "type": "string" },
+        "rewardAmount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["referrerId", "referredId", "rewardAmount", "createdAt"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "Service booking record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "customerId": { "type": "string" },
+        "workerId": { "type": "string" },
+        "serviceType": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "completed", "cancelled"] },
+        "amount": { "type": "number" },
+        "paymentStatus": { "type": "string", "enum": ["unpaid", "paid"] },
+        "transactionId": { "type": "string" },
+        "bookingTime": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["customerId", "workerId", "serviceType", "status", "amount", "bookingTime", "createdAt"]
+    },
+    "ToolUsage": {
+      "title": "ToolUsage",
+      "description": "Tracking utility tool usage",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "toolName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["toolName", "createdAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "System users"
+    },
+    "workers/{workerId}": {
+      "schema": "Worker",
+      "description": "Service providers"
+    },
+    "bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "Service bookings"
+    },
+    "toolUsage/{usageId}": {
+      "schema": "ToolUsage",
+      "description": "Utility tool usage logs"
+    },
+    "transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "UPI Payment transactions"
+    },
+    "commissionBills/{billId}": {
+      "schema": "CommissionBill",
+      "description": "Monthly commission invoices"
+    },
+    "referrals/{referralId}": {
+      "schema": "Referral",
+      "description": "System referral records"
+    }
+  }
+}
